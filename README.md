@@ -1,6 +1,6 @@
 # Crustkit
 
-Reusable Rust TUI primitives for local Rust command-line tools.
+Reusable Rust TUI primitives for local command-line tools.
 
 This repo is intentionally a small Rust workspace, not a full application
 framework. App-specific parsing, API clients, file naming rules, and output
@@ -29,38 +29,27 @@ crustkit/
 - a typed status line model
 - key hint vocabulary and footer rendering
 - shared header/footer shell helpers
-- small responsive layout helpers
+- small adaptive layout helpers
 
 Keep new primitives narrow. If a concept only knows about one app's domain,
 put it in that app instead.
 
 ## Local Consumption
 
-Standalone local apps can depend on the core crate by path:
+Standalone local apps can depend on the crate by path while keeping a publishable
+version requirement:
 
 ```toml
 [dependencies]
-crustkit = { path = "../crustkit/crates/crustkit" }
+crustkit = { version = "0.1.0", path = "../crustkit/crates/crustkit" }
 ```
 
-For committed `platform` code later, prefer a Cargo git dependency once this
-repo has a remote:
+Published apps can depend on the crates.io release:
 
 ```toml
 [dependencies]
-crustkit = { git = "ssh://git@github.com/<org>/crustkit.git", package = "crustkit" }
+crustkit = "0.1.0"
 ```
-
-For local `platform` development, use a gitignored patch in
-`platform/.cargo/config.toml`:
-
-```toml
-[patch."ssh://git@github.com/<org>/crustkit.git"]
-crustkit = { path = "../crustkit/crates/crustkit" }
-```
-
-`platform/.cargo/` is gitignored so this local override does not leak into
-committed product code.
 
 ## Validation
 
