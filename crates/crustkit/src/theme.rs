@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use color_eyre::Result;
 use ratatui::style::{Color, Modifier, Style};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +85,19 @@ impl AppTheme {
             ThemeMode::Dark => Self::dark(),
             ThemeMode::Light => Self::light(),
         }
+    }
+
+    /// Detect a light or dark app theme from the current terminal background.
+    pub fn detect(timeout: Duration) -> Result<Option<Self>> {
+        crate::terminal_background::detect_terminal_theme_mode(timeout)
+            .map(|mode| mode.map(Self::from_mode))
+    }
+
+    /// Detect a light or dark app theme, falling back when detection is unavailable.
+    pub fn detect_or(timeout: Duration, fallback: ThemeMode) -> Self {
+        Self::from_mode(crate::terminal_background::terminal_theme_mode_or(
+            timeout, fallback,
+        ))
     }
 
     pub const fn mode(self) -> ThemeMode {

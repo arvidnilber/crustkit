@@ -30,26 +30,29 @@ crustkit/
 - key hint vocabulary and footer rendering
 - shared header/footer shell helpers
 - small adaptive layout helpers
+- terminal background color/theme detection for automatic light/dark palettes
 
 Keep new primitives narrow. If a concept only knows about one app's domain,
 put it in that app instead.
 
 ## Local Consumption
 
-Standalone local apps can depend on the crate by path while keeping a publishable
-version requirement:
-
-```toml
-[dependencies]
-crustkit = { version = "0.1.0", path = "../crustkit/crates/crustkit" }
-```
-
-Published apps can depend on the crates.io release:
+Apps should depend on the published crate in `Cargo.toml`:
 
 ```toml
 [dependencies]
 crustkit = "0.1.0"
 ```
+
+For local development, generate a Cargo patch in the consuming project:
+
+```bash
+/Users/arvidnilber/Documents/Projects/rust-tui/crustkit/scripts/use-local-crustkit.sh /path/to/tui-project
+```
+
+The helper reads `CRUSTKIT_PATH` from the target project's `.env` or
+`.env.local`, then writes `.cargo/config.toml`. If no env value is present, it
+uses the `crustkit` checkout that contains the helper script.
 
 ## Validation
 
