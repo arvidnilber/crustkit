@@ -48,6 +48,7 @@ crustkit::run_reloadable_cli(reload, || app::run(root, reload))?;
 Pass the same `CliReload` into the app state and include
 `reload.key_hint()` in the footer key commands. When disabled with
 `CliReload::disabled()`, the key does not match and no footer hint is shown.
+The default enabled binding is `ctrl+r`.
 
 In debug builds launched from a Cargo crate directory, Crustkit supervises
 `cargo run` and reloads by rebuilding and restarting. Outside that local

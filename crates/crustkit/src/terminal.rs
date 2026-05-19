@@ -48,7 +48,7 @@ impl CliReload {
         Self {
             enabled: false,
             key: 'r',
-            key_label: "r",
+            key_label: "ctrl+r",
             dev_cargo_loop: false,
         }
     }
@@ -57,7 +57,7 @@ impl CliReload {
         Self {
             enabled: true,
             key: 'r',
-            key_label: "r",
+            key_label: "ctrl+r",
             dev_cargo_loop: true,
         }
     }
@@ -73,12 +73,12 @@ impl CliReload {
 
     pub fn matches_key(self, code: KeyCode, modifiers: KeyModifiers) -> bool {
         self.enabled
-            && modifiers.is_empty()
+            && modifiers.contains(KeyModifiers::CONTROL)
             && matches!(code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&self.key))
     }
 
     pub fn key_hint(self) -> Option<KeyHint> {
-        self.enabled.then(|| KeyHint::new("reload", self.key_label))
+        self.enabled.then(|| KeyHint::new(self.key_label, "reload"))
     }
 }
 
@@ -245,5 +245,30 @@ impl TerminalSession {
 impl Drop for TerminalSession {
     fn drop(&mut self) {
         let _ = self.restore();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    use super::CliReload;
+
+    #[test]
+    fn cli_reload_matches_ctrl_r_only_when_enabled() {
+        let reload = CliReload::enabled();
+
+        assert!(reload.matches_key(KeyCode::Char('r'), KeyModifiers::CONTROL));
+        assert!(!reload.matches_key(KeyCode::Char('r'), KeyModifiers::empty()));
+        assert!(!CliReload::disabled().matches_key(KeyCode::Char('r'), KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn cli_reload_key_hint_uses_ctrl_r() {
+        let hint = CliReload::enabled().key_hint().expect("reload hint");
+
+        assert_eq!(hint.key, "ctrl+r");
+        assert_eq!(hint.action, "reload");
+        assert!(CliReload::disabled().key_hint().is_none());
     }
 }

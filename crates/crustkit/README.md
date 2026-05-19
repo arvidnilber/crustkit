@@ -27,3 +27,5 @@ CLI reload is opt-in:
 let reload = crustkit::CliReload::enabled();
 crustkit::run_reloadable_cli(reload, || app::run(root, reload))?;
 ```
+
+The default enabled binding is `ctrl+r`.
