@@ -32,6 +32,7 @@ crustkit/
 - small adaptive layout helpers
 - terminal background color/theme detection for automatic light/dark palettes
 - opt-in CLI reload helpers for local TUI development
+- shared `ctrl+c` exit-key helpers for raw-mode event loops
 
 Keep new primitives narrow. If a concept only knows about one app's domain,
 put it in that app instead.

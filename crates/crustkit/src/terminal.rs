@@ -82,6 +82,15 @@ impl CliReload {
     }
 }
 
+pub fn is_exit_key(code: KeyCode, modifiers: KeyModifiers) -> bool {
+    modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'c'))
+}
+
+pub fn exit_key_hint() -> KeyHint {
+    KeyHint::new("ctrl+c", "quit")
+}
+
 pub struct FullRepaintTicker {
     pending: bool,
 }
@@ -252,7 +261,7 @@ impl Drop for TerminalSession {
 mod tests {
     use crossterm::event::{KeyCode, KeyModifiers};
 
-    use super::CliReload;
+    use super::{CliReload, exit_key_hint, is_exit_key};
 
     #[test]
     fn cli_reload_matches_ctrl_r_only_when_enabled() {
@@ -270,5 +279,21 @@ mod tests {
         assert_eq!(hint.key, "ctrl+r");
         assert_eq!(hint.action, "reload");
         assert!(CliReload::disabled().key_hint().is_none());
+    }
+
+    #[test]
+    fn exit_key_matches_ctrl_c() {
+        assert!(is_exit_key(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(is_exit_key(KeyCode::Char('C'), KeyModifiers::CONTROL));
+        assert!(!is_exit_key(KeyCode::Char('c'), KeyModifiers::empty()));
+        assert!(!is_exit_key(KeyCode::Char('r'), KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn exit_key_hint_uses_ctrl_c() {
+        let hint = exit_key_hint();
+
+        assert_eq!(hint.key, "ctrl+c");
+        assert_eq!(hint.action, "quit");
     }
 }
