@@ -24,7 +24,9 @@ pub use progress::{
 pub use shell::{footer, header};
 pub use status::{StatusKind, StatusLine};
 pub use terminal::{
-    FullRepaintTicker, ManagedTerminal, TerminalResult, restore_terminal_state, run_with_terminal,
+    CLI_RELOAD_CHILD_ENV, CLI_RELOAD_EXIT_CODE, CliExit, CliReload, FullRepaintTicker,
+    ManagedTerminal, TerminalResult, finish_cli_exit, reload_current_process,
+    restore_terminal_state, run_reloadable_cli, run_with_terminal,
 };
 pub use terminal_background::{
     TerminalBackgroundColor, detect_terminal_background_color, detect_terminal_theme_mode,

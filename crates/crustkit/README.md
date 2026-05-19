@@ -20,3 +20,10 @@ use crustkit::{AppTheme, ThemeMode};
 
 let theme = AppTheme::detect_or(Duration::from_millis(100), ThemeMode::Dark);
 ```
+
+CLI reload is opt-in:
+
+```rust
+let reload = crustkit::CliReload::enabled();
+crustkit::run_reloadable_cli(reload, || app::run(root, reload))?;
+```
