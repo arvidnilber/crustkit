@@ -2,6 +2,7 @@ pub mod dialog;
 pub mod input;
 pub mod keys;
 pub mod layout;
+pub mod mouse;
 pub mod progress;
 pub mod shell;
 pub mod status;
@@ -10,9 +11,12 @@ pub mod terminal_background;
 pub mod theme;
 
 pub use dialog::{DialogTheme, InputDialog, centered_dialog_rect};
-pub use input::TextInput;
+pub use input::{TextInput, input_value_spans};
 pub use keys::{KeyHint, key_hints_line};
 pub use layout::{body_split, centered_rect};
+pub use mouse::{
+    MouseClick, inline_item_index_at, left_mouse_click, mouse_position, rect_contains, row_index_at,
+};
 pub use progress::{
     ProgressBarTheme, TransferProgress, format_bytes, format_bytes_per_second,
     transfer_progress_gauge,

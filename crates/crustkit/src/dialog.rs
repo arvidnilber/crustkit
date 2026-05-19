@@ -6,6 +6,8 @@ use ratatui::{
     widgets::{Block, BorderType, Clear, Padding, Paragraph, Wrap},
 };
 
+use crate::input::input_value_spans;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DialogTheme {
     pub panel: Style,
@@ -49,6 +51,8 @@ pub struct InputDialog {
     secondary_label: String,
     width: u16,
     height: u16,
+    cursor: bool,
+    pending: bool,
 }
 
 impl InputDialog {
@@ -63,6 +67,8 @@ impl InputDialog {
             secondary_label: "Esc cancel".to_string(),
             width: 52,
             height: 9,
+            cursor: true,
+            pending: false,
         }
     }
 
@@ -97,6 +103,16 @@ impl InputDialog {
         self
     }
 
+    pub fn cursor(mut self, enabled: bool) -> Self {
+        self.cursor = enabled;
+        self
+    }
+
+    pub fn pending(mut self, pending: bool) -> Self {
+        self.pending = pending;
+        self
+    }
+
     pub fn render(self, frame: &mut Frame<'_>, area: Rect, theme: DialogTheme) {
         let rect = centered_dialog_rect(area, self.width, self.height);
         frame.render_widget(Clear, rect);
@@ -104,18 +120,23 @@ impl InputDialog {
     }
 
     pub fn widget(self, theme: DialogTheme) -> Paragraph<'static> {
-        let shown_value = if self.value.is_empty() {
-            Span::styled(self.placeholder, theme.placeholder)
-        } else {
-            Span::styled(self.value, theme.input)
-        };
+        let value_spans = input_value_spans(
+            self.value,
+            self.placeholder,
+            theme.input,
+            theme.placeholder,
+            theme.input.add_modifier(Modifier::REVERSED),
+            self.cursor,
+        );
 
         let mut lines = vec![
-            Line::from(vec![
-                Span::styled(self.label, theme.label),
-                Span::raw(" "),
-                shown_value,
-            ]),
+            Line::from(
+                [
+                    vec![Span::styled(self.label, theme.label), Span::raw(" ")],
+                    value_spans,
+                ]
+                .concat(),
+            ),
             Line::from(""),
         ];
 
@@ -124,8 +145,14 @@ impl InputDialog {
             lines.push(Line::from(""));
         }
 
+        let primary_label = if self.pending {
+            format!(" {}... ", self.primary_label)
+        } else {
+            format!(" {} ", self.primary_label)
+        };
+
         lines.push(Line::from(vec![
-            Span::styled(format!(" {} ", self.primary_label), theme.primary_button),
+            Span::styled(primary_label, theme.primary_button),
             Span::raw("  "),
             Span::styled(self.secondary_label, theme.secondary_button),
         ]));
@@ -186,5 +213,19 @@ mod tests {
 
         assert_eq!(dialog.value, "25");
         assert_eq!(dialog.primary_label, "Save");
+    }
+
+    #[test]
+    fn input_dialog_cursor_can_be_disabled() {
+        let dialog = InputDialog::new("Count", "Episodes:").cursor(false);
+
+        assert!(!dialog.cursor);
+    }
+
+    #[test]
+    fn input_dialog_pending_can_be_enabled() {
+        let dialog = InputDialog::new("Save", "Name:").pending(true);
+
+        assert!(dialog.pending);
     }
 }

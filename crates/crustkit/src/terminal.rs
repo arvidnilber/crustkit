@@ -6,7 +6,7 @@ use std::{
 use color_eyre::Result;
 use crossterm::{
     cursor::{MoveTo, Show},
-    event::{DisableFocusChange, EnableFocusChange},
+    event::{DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture},
     execute,
     terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -53,6 +53,7 @@ pub fn restore_terminal_state() -> TerminalResult<()> {
     execute!(
         stdout,
         DisableFocusChange,
+        DisableMouseCapture,
         Clear(ClearType::All),
         MoveTo(0, 0),
         LeaveAlternateScreen,
@@ -72,7 +73,12 @@ impl TerminalSession {
     fn enter() -> Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableFocusChange)?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableFocusChange,
+            EnableMouseCapture
+        )?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
