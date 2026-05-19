@@ -32,8 +32,10 @@ impl ThemePalette {
             background: Color::Black,
             panel_background: Color::Black,
             panel_alt_background: Color::Black,
-            muted_foreground: Color::DarkGray,
-            border: Color::DarkGray,
+            // Color::DarkGray (ANSI 8) falls below WCAG-AA contrast on
+            // near-black terminal backgrounds like Warp or Ghostty's defaults.
+            muted_foreground: Color::Rgb(170, 170, 170),
+            border: Color::Rgb(95, 95, 95),
             accent: Color::Cyan,
             accent_foreground: Color::Black,
             selection_foreground: Color::Black,
@@ -48,7 +50,7 @@ impl ThemePalette {
             background: Color::White,
             panel_background: Color::White,
             panel_alt_background: Color::White,
-            muted_foreground: Color::DarkGray,
+            muted_foreground: Color::Rgb(90, 90, 90),
             border: Color::Gray,
             accent: Color::Blue,
             accent_foreground: Color::White,
