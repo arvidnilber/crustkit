@@ -6,6 +6,11 @@ This repo is intentionally a small Rust workspace, not a full application
 framework. App-specific parsing, API clients, file naming rules, and output
 formats should live in the consuming app crate.
 
+The goal is a "shadcn for Rust TUIs" style toolkit: composable primitives built
+on raw Rust, Ratatui, and Crossterm. It should make terminal apps responsive,
+memory cheap, clean, powerful, and non-invasive without forcing an app
+framework around the caller.
+
 ## Workspace
 
 ```text
@@ -73,6 +78,20 @@ For local development, generate a Cargo patch in the consuming project:
 The helper reads `CRUSTKIT_PATH` from the target project's `.env` or
 `.env.local`, then writes `.cargo/config.toml`. If no env value is present, it
 uses the `crustkit` checkout that contains the helper script.
+
+## Publishing
+
+Crustkit is crates.io-ready and should be published before apps that depend on
+a new Crustkit version.
+
+```bash
+cargo publish --dry-run --locked -p crustkit
+```
+
+The full release checklist lives in [`docs/release.md`](docs/release.md). The
+GitHub release workflow uses a protected `crates-io` environment, prefers
+crates.io Trusted Publishing, and supports a one-time scoped `CRATES_IO_TOKEN`
+only for the first bootstrap publish.
 
 ## Validation
 

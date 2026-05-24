@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run all release checks without publishing"
+        type: boolean
+        default: true
+      publish:
+        description: "Publish to crates.io when dry_run is false"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Release crustkit
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: rustup show
+
+      - name: Decide publish mode
+        id: mode
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ inputs.publish }}" == "true" && "${{ inputs.dry_run }}" != "true" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Check
+        run: cargo check --locked
+
+      - name: Clippy
+        run: cargo clippy --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Package dry run
+        run: cargo publish --dry-run --locked -p crustkit
+
+      - name: Authenticate with crates.io trusted publishing
+        id: crates_io_auth
+        if: steps.mode.outputs.publish == 'true'
+        uses: rust-lang/crates-io-auth-action@v1.0.4
+        continue-on-error: true
+
+      - name: Publish to crates.io
+        if: steps.mode.outputs.publish == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token || secrets.CRATES_IO_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+            echo "No crates.io token was available."
+            echo "Configure trusted publishing for this workflow, or add a one-time scoped CRATES_IO_TOKEN secret for the first publish."
+            exit 1
+          fi
+
+          cargo publish --locked -p crustkit
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/') && steps.mode.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "GitHub release $GITHUB_REF_NAME already exists"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          fi

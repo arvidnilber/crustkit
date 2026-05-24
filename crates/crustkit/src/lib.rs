@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub mod dialog;
 pub mod input;
 pub mod keys;

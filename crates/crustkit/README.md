@@ -8,6 +8,10 @@ lifecycle helpers, status lines, key hints, shell header/footer helpers, transfe
 progress widgets, theme primitives, terminal background detection, and small
 adaptive layout helpers. App domain logic belongs in the consuming crate.
 
+The crate is meant to stay composable and non-invasive: use the primitives you
+need, keep your app state and domain workflow in your own crate, and rely on
+Cargo patches for local iteration.
+
 ```toml
 [dependencies]
 crustkit = "0.1.0"

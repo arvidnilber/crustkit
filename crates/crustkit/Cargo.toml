@@ -4,11 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Small Ratatui and Crossterm primitives for terminal applications."
-license = "MIT OR Apache-2.0"
+license.workspace = true
 readme = "README.md"
-documentation = "https://docs.rs/crustkit"
+homepage.workspace = true
+repository.workspace = true
+documentation.workspace = true
 keywords = ["tui", "terminal", "ratatui", "crossterm"]
 categories = ["command-line-interface"]
+include = ["src/**/*.rs", "Cargo.toml", "README.md", "LICENSE-*"]
 
 [dependencies]
 color-eyre.workspace = true

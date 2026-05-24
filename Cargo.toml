@@ -6,6 +6,10 @@ resolver = "3"
 edition = "2024"
 rust-version = "1.95"
 version = "0.1.0"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/arvidnilber/crustkit"
+repository = "https://github.com/arvidnilber/crustkit"
+documentation = "https://docs.rs/crustkit"
 
 [workspace.dependencies]
 color-eyre = "0.6"
