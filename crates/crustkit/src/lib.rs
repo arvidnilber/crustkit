@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 pub mod dialog;
+#[cfg(feature = "tachyonfx")]
+pub mod effects;
 pub mod input;
 pub mod keys;
 pub mod layout;
@@ -13,6 +15,11 @@ pub mod terminal_background;
 pub mod theme;
 
 pub use dialog::{DialogTheme, InputDialog, centered_dialog_rect};
+#[cfg(feature = "tachyonfx")]
+pub use effects::{
+    ComponentEffect, ComponentEffectFilter, ComponentEffectManager, ComponentEffectPattern,
+    EffectPreset, EffectRepeat, UiEffectManager,
+};
 pub use input::{TextInput, input_value_spans};
 pub use keys::{KeyHint, key_hints_line};
 pub use layout::{body_split, centered_rect};

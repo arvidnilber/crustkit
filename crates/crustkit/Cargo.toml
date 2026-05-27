@@ -17,4 +17,8 @@ include = ["src/**/*.rs", "Cargo.toml", "README.md", "LICENSE-*"]
 color-eyre.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
+tachyonfx = { workspace = true, optional = true }
 termbg.workspace = true
+
+[features]
+tachyonfx = ["dep:tachyonfx"]

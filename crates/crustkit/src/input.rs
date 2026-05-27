@@ -6,7 +6,11 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "tachyonfx")]
+use crate::effects::ComponentEffect;
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(not(feature = "tachyonfx"), derive(Eq))]
 pub struct TextInput {
     title: String,
     label: String,
@@ -15,6 +19,8 @@ pub struct TextInput {
     focused: bool,
     help: Option<String>,
     cursor: bool,
+    #[cfg(feature = "tachyonfx")]
+    effect: Option<ComponentEffect>,
 }
 
 impl TextInput {
@@ -27,6 +33,8 @@ impl TextInput {
             focused: false,
             help: None,
             cursor: true,
+            #[cfg(feature = "tachyonfx")]
+            effect: None,
         }
     }
 
@@ -53,6 +61,17 @@ impl TextInput {
     pub fn help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
         self
+    }
+
+    #[cfg(feature = "tachyonfx")]
+    pub fn effect(mut self, effect: ComponentEffect) -> Self {
+        self.effect = Some(effect);
+        self
+    }
+
+    #[cfg(feature = "tachyonfx")]
+    pub const fn component_effect(&self) -> Option<ComponentEffect> {
+        self.effect
     }
 
     pub fn widget(self) -> Paragraph<'static> {

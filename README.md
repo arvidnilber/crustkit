@@ -38,6 +38,8 @@ crustkit/
 - terminal background color/theme detection for automatic light/dark palettes
 - opt-in CLI reload helpers for local TUI development
 - shared `ctrl+c` exit-key helpers for raw-mode event loops
+- optional TachyonFX presets and component effect props behind the
+  `tachyonfx` feature
 
 Keep new primitives narrow. If a concept only knows about one app's domain,
 put it in that app instead.
@@ -55,6 +57,23 @@ Pass the same `CliReload` into the app state and include
 `reload.key_hint()` in the footer key commands. When disabled with
 `CliReload::disabled()`, the key does not match and no footer hint is shown.
 The default enabled binding is `ctrl+r`.
+
+## TachyonFX
+
+Crustkit keeps animations optional. Enable the feature when an app wants
+TachyonFX transitions without making every consumer pull the dependency:
+
+```toml
+[dependencies]
+crustkit = { version = "0.1.0", features = ["tachyonfx"] }
+```
+
+`ComponentEffect` covers common fade, dissolve, coalesce, sweep, slide, and
+pulse effects plus radial, diagonal, sweep, checkerboard, dissolve, and
+coalesce patterns. Components with builders, such as `TextInput` and
+`InputDialog`, expose `.effect(...)` and `.component_effect()` props; use
+`ComponentEffectManager::render_widget` during drawing and call
+`process_frame` after rendering the frame content.
 
 In debug builds launched from a Cargo crate directory, Crustkit supervises
 `cargo run` and reloads by rebuilding and restarting. Outside that local

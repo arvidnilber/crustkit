@@ -6,6 +6,8 @@ use ratatui::{
     widgets::{Block, BorderType, Clear, Padding, Paragraph, Wrap},
 };
 
+#[cfg(feature = "tachyonfx")]
+use crate::effects::ComponentEffect;
 use crate::input::input_value_spans;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +42,8 @@ impl Default for DialogTheme {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(not(feature = "tachyonfx"), derive(Eq))]
 pub struct InputDialog {
     title: String,
     label: String,
@@ -53,6 +56,8 @@ pub struct InputDialog {
     height: u16,
     cursor: bool,
     pending: bool,
+    #[cfg(feature = "tachyonfx")]
+    effect: Option<ComponentEffect>,
 }
 
 impl InputDialog {
@@ -69,6 +74,8 @@ impl InputDialog {
             height: 9,
             cursor: true,
             pending: false,
+            #[cfg(feature = "tachyonfx")]
+            effect: None,
         }
     }
 
@@ -111,6 +118,17 @@ impl InputDialog {
     pub fn pending(mut self, pending: bool) -> Self {
         self.pending = pending;
         self
+    }
+
+    #[cfg(feature = "tachyonfx")]
+    pub fn effect(mut self, effect: ComponentEffect) -> Self {
+        self.effect = Some(effect);
+        self
+    }
+
+    #[cfg(feature = "tachyonfx")]
+    pub const fn component_effect(&self) -> Option<ComponentEffect> {
+        self.effect
     }
 
     pub fn render(self, frame: &mut Frame<'_>, area: Rect, theme: DialogTheme) {
