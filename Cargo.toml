@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/crustkit"]
+members = ["crates/crustkit", "examples/crustkit-demo"]
 resolver = "3"
 
 [workspace.package]
@@ -12,8 +12,8 @@ repository = "https://github.com/arvidnilber/crustkit"
 documentation = "https://docs.rs/crustkit"
 
 [workspace.dependencies]
+clap = { version = "4", features = ["derive", "env"] }
 color-eyre = "0.6"
 crossterm = "0.29"
 ratatui = "0.30"
 tachyonfx = "0.25.0"
-termbg = "0.6"

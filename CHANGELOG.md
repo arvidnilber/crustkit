@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Enable TachyonFX by default while preserving the slim opt-out path with
+  `default-features = false`.
+- Add a publish-disabled `crustkit-demo` workspace app with keyboard, mouse,
+  theme, progress, dialog, shadow, and runtime `--no-effects` examples.
+- Remove the `termbg` dependency and keep terminal background detection inside
+  Crustkit to avoid a duplicate Crossterm stack and test/logging dependencies.
+- Reduce hot-path allocation churn in layout, input/dialog span construction,
+  and progress label formatting.
+
 ## 0.1.0 - 2026-05-19
 
 - First public Crustkit release.

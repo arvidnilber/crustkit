@@ -11,6 +11,60 @@ on raw Rust, Ratatui, and Crossterm. It should make terminal apps responsive,
 memory cheap, clean, powerful, and non-invasive without forcing an app
 framework around the caller.
 
+## Alpha Quickstart
+
+Add Crustkit to a Ratatui app:
+
+```toml
+[dependencies]
+crustkit = "0.1.0"
+crossterm = "0.29"
+ratatui = "0.30"
+```
+
+Then keep the app shell small: parse args, enter Crustkit's terminal lifecycle,
+draw pure UI from state, and handle keys/mouse as transitions.
+
+```rust
+use color_eyre::Result;
+use crustkit::{ManagedTerminal, StatusLine, footer, run_with_terminal};
+use crossterm::event::{self, Event, KeyCode};
+use ratatui::{layout::Constraint, widgets::Paragraph};
+
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    run_with_terminal(run)
+}
+
+fn run(terminal: &mut ManagedTerminal) -> Result<()> {
+    let mut status = StatusLine::info("ready");
+    loop {
+        terminal.draw(|frame| {
+            let area = frame.area();
+            frame.render_widget(Paragraph::new("hello from crustkit"), area);
+            frame.render_widget(footer([], Some(&status)), area);
+        })?;
+
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Char('q') => break,
+                KeyCode::Char('r') => status = StatusLine::success("refreshed"),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+Run the public demo for the richer shape:
+
+```bash
+cargo run -p crustkit-demo -- --help
+cargo run -p crustkit-demo
+cargo run -p crustkit-demo -- --no-effects
+```
+
 ## Workspace
 
 ```text
@@ -38,7 +92,7 @@ crustkit/
 - terminal background color/theme detection for automatic light/dark palettes
 - opt-in CLI reload helpers for local TUI development
 - shared `ctrl+c` exit-key helpers for raw-mode event loops
-- optional TachyonFX presets and component effect props behind the
+- TachyonFX presets and component effect props enabled by default through the
   `tachyonfx` feature
 
 Keep new primitives narrow. If a concept only knows about one app's domain,
@@ -60,12 +114,13 @@ The default enabled binding is `ctrl+r`.
 
 ## TachyonFX
 
-Crustkit keeps animations optional. Enable the feature when an app wants
-TachyonFX transitions without making every consumer pull the dependency:
+Crustkit enables TachyonFX transitions by default for the alpha because effects
+are part of the first-run experience. Consumers that need the smallest
+dependency graph can disable default features:
 
 ```toml
 [dependencies]
-crustkit = { version = "0.1.0", features = ["tachyonfx"] }
+crustkit = { version = "0.1.0", default-features = false }
 ```
 
 `ComponentEffect` covers common fade, dissolve, coalesce, sweep, slide, and
@@ -91,7 +146,7 @@ crustkit = "0.1.0"
 For local development, generate a Cargo patch in the consuming project:
 
 ```bash
-/Users/arvidnilber/Documents/Projects/rust-tui/crustkit/scripts/use-local-crustkit.sh /path/to/tui-project
+./scripts/use-local-crustkit.sh /path/to/tui-project
 ```
 
 The helper reads `CRUSTKIT_PATH` from the target project's `.env` or
@@ -117,6 +172,8 @@ only for the first bootstrap publish.
 ```bash
 cargo fmt --check
 cargo check
+cargo check --no-default-features
 cargo clippy -- -D warnings
 cargo test
+cargo test --no-default-features
 ```

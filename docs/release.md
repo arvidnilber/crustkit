@@ -39,8 +39,11 @@ After the first publish, configure crates.io Trusted Publishing for:
 ```bash
 cargo fmt --check
 cargo check --locked
+cargo check --locked --no-default-features
 cargo clippy --locked -- -D warnings
 cargo test --locked
+cargo test --locked --no-default-features
+cargo run -p crustkit-demo -- --help
 cargo publish --dry-run --locked -p crustkit
 cargo package --list -p crustkit
 ```

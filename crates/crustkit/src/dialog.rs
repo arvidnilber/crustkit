@@ -147,16 +147,14 @@ impl InputDialog {
             self.cursor,
         );
 
-        let mut lines = vec![
-            Line::from(
-                [
-                    vec![Span::styled(self.label, theme.label), Span::raw(" ")],
-                    value_spans,
-                ]
-                .concat(),
-            ),
-            Line::from(""),
-        ];
+        let mut input_spans = Vec::with_capacity(value_spans.len() + 2);
+        input_spans.push(Span::styled(self.label, theme.label));
+        input_spans.push(Span::raw(" "));
+        input_spans.extend(value_spans);
+
+        let mut lines = Vec::with_capacity(if self.help.is_some() { 5 } else { 3 });
+        lines.push(Line::from(input_spans));
+        lines.push(Line::from(""));
 
         if let Some(help) = self.help {
             lines.push(Line::from(Span::styled(help, theme.help)));

@@ -1,4 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    borrow::Cow,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use ratatui::{
     style::{Color, Modifier, Style},
@@ -94,19 +97,14 @@ impl TextInput {
             self.focused && self.cursor,
         );
 
-        let mut lines = vec![
-            Line::from(
-                [
-                    vec![
-                        Span::styled(self.label, Style::new().bold()),
-                        Span::raw(" "),
-                    ],
-                    value_spans,
-                ]
-                .concat(),
-            ),
-            Line::from(""),
-        ];
+        let mut input_spans = Vec::with_capacity(value_spans.len() + 2);
+        input_spans.push(Span::styled(self.label, Style::new().bold()));
+        input_spans.push(Span::raw(" "));
+        input_spans.extend(value_spans);
+
+        let mut lines = Vec::with_capacity(if self.help.is_some() { 3 } else { 2 });
+        lines.push(Line::from(input_spans));
+        lines.push(Line::from(""));
 
         if let Some(help) = self.help {
             lines.push(Line::from(Span::styled(
@@ -124,14 +122,16 @@ impl TextInput {
     }
 }
 
-pub fn input_value_spans(
-    value: String,
-    placeholder: String,
+pub fn input_value_spans<'a>(
+    value: impl Into<Cow<'a, str>>,
+    placeholder: impl Into<Cow<'a, str>>,
     input_style: Style,
     placeholder_style: Style,
     cursor_style: Style,
     show_cursor: bool,
-) -> Vec<Span<'static>> {
+) -> Vec<Span<'a>> {
+    let value = value.into();
+    let placeholder = placeholder.into();
     let cursor = if show_cursor && cursor_blink_on() {
         Span::styled(" ", cursor_style)
     } else if show_cursor {

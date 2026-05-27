@@ -34,11 +34,12 @@ crustkit::run_reloadable_cli(reload, || app::run(root, reload))?;
 
 The default enabled binding is `ctrl+r`.
 
-TachyonFX support is opt-in:
+TachyonFX support is enabled by default. Disable default features when a
+consumer needs the smallest dependency graph:
 
 ```toml
 [dependencies]
-crustkit = { version = "0.1.0", features = ["tachyonfx"] }
+crustkit = { version = "0.1.0", default-features = false }
 ```
 
 ```rust
@@ -72,3 +73,10 @@ terminal.draw(|frame| {
 
 The `effects` module also re-exports `tachyonfx`, so consumers can drop down to
 raw `tachyonfx::fx::*` composition whenever the preset helpers are not enough.
+
+The repository also includes a publish-disabled demo app:
+
+```bash
+cargo run -p crustkit-demo -- --help
+cargo run -p crustkit-demo -- --no-effects
+```

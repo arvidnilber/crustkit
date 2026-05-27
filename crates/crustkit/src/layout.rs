@@ -5,20 +5,20 @@ pub fn body_split(
     compact_below: u16,
     left_percent: u16,
     left_height: u16,
-) -> Vec<Rect> {
+) -> [Rect; 2] {
     if area.width < compact_below {
-        Layout::vertical([Constraint::Length(left_height), Constraint::Fill(1)])
+        let chunks = Layout::vertical([Constraint::Length(left_height), Constraint::Fill(1)])
             .spacing(1)
-            .split(area)
-            .to_vec()
+            .split(area);
+        [chunks[0], chunks[1]]
     } else {
-        Layout::horizontal([
+        let chunks = Layout::horizontal([
             Constraint::Percentage(left_percent),
             Constraint::Percentage(100 - left_percent),
         ])
         .spacing(2)
-        .split(area)
-        .to_vec()
+        .split(area);
+        [chunks[0], chunks[1]]
     }
 }
 

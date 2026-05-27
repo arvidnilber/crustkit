@@ -4,7 +4,7 @@ use std::{
     io::{self, Stdout},
     path::Path,
     process::{Command, Stdio},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use color_eyre::{Result, eyre::Context};
@@ -92,17 +92,26 @@ pub fn exit_key_hint() -> KeyHint {
 }
 
 pub struct FullRepaintTicker {
+    interval: Duration,
+    last_clear: Instant,
     pending: bool,
 }
 
 impl FullRepaintTicker {
-    pub fn new(_interval: Duration) -> Self {
-        Self { pending: true }
+    pub fn new(interval: Duration) -> Self {
+        Self {
+            interval,
+            last_clear: Instant::now(),
+            pending: true,
+        }
     }
 
     pub fn should_clear(&mut self) -> bool {
-        let should_clear = self.pending;
-        self.pending = false;
+        let should_clear = self.pending || self.last_clear.elapsed() >= self.interval;
+        if should_clear {
+            self.last_clear = Instant::now();
+            self.pending = false;
+        }
         should_clear
     }
 
@@ -116,8 +125,16 @@ pub fn run_with_terminal<T>(
 ) -> TerminalResult<T> {
     let mut terminal = TerminalSession::enter()?;
     let result = run(&mut terminal.terminal);
-    terminal.restore()?;
-    result
+    let restore = terminal.restore();
+
+    match (result, restore) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(restore_err)) => Err(restore_err),
+        (Err(run_err), Ok(())) => Err(run_err),
+        (Err(run_err), Err(restore_err)) => {
+            Err(run_err.wrap_err(format!("terminal restore also failed: {restore_err}")))
+        }
+    }
 }
 
 pub fn restore_terminal_state() -> TerminalResult<()> {
@@ -261,7 +278,9 @@ impl Drop for TerminalSession {
 mod tests {
     use crossterm::event::{KeyCode, KeyModifiers};
 
-    use super::{CliReload, exit_key_hint, is_exit_key};
+    use std::time::Duration;
+
+    use super::{CliReload, FullRepaintTicker, exit_key_hint, is_exit_key};
 
     #[test]
     fn cli_reload_matches_ctrl_r_only_when_enabled() {
@@ -295,5 +314,17 @@ mod tests {
 
         assert_eq!(hint.key, "ctrl+c");
         assert_eq!(hint.action, "quit");
+    }
+
+    #[test]
+    fn full_repaint_ticker_forces_first_clear_then_waits() {
+        let mut ticker = FullRepaintTicker::new(Duration::from_secs(60));
+
+        assert!(ticker.should_clear());
+        assert!(!ticker.should_clear());
+
+        ticker.force_next();
+
+        assert!(ticker.should_clear());
     }
 }

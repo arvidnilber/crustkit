@@ -18,7 +18,7 @@ color-eyre.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
 tachyonfx = { workspace = true, optional = true }
-termbg.workspace = true
 
 [features]
+default = ["tachyonfx"]
 tachyonfx = ["dep:tachyonfx"]

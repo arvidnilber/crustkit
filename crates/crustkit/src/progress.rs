@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt::Write as _, time::Duration};
 
 use ratatui::{
     style::Style,
@@ -39,22 +39,31 @@ impl TransferProgress {
     }
 
     pub fn summary(self) -> String {
-        let size = match self.total_bytes {
-            Some(total) => format!(
-                "{} / {}",
-                format_bytes(self.downloaded_bytes),
-                format_bytes(total)
-            ),
-            None => format_bytes(self.downloaded_bytes),
-        };
-        let speed = self
-            .bytes_per_second()
-            .map(format_bytes_per_second)
-            .unwrap_or_else(|| "-/s".to_string());
-        match self.ratio() {
-            Some(ratio) => format!("{:>5.1}%  {size}  {speed}", ratio * 100.0),
-            None => format!("  ---%  {size}  {speed}"),
+        let ratio = self.ratio();
+        let speed = self.bytes_per_second();
+        let mut summary = String::with_capacity(48);
+
+        match ratio {
+            Some(ratio) => {
+                let _ = write!(summary, "{:>5.1}%  ", ratio * 100.0);
+            }
+            None => summary.push_str("  ---%  "),
         }
+
+        write_bytes(&mut summary, self.downloaded_bytes);
+        if let Some(total) = self.total_bytes {
+            summary.push_str(" / ");
+            write_bytes(&mut summary, total);
+        }
+        summary.push_str("  ");
+        if let Some(speed) = speed {
+            write_bytes(&mut summary, speed.max(0.0) as u64);
+            summary.push_str("/s");
+        } else {
+            summary.push_str("-/s");
+        }
+
+        summary
     }
 }
 
@@ -92,6 +101,12 @@ pub fn transfer_progress_gauge<'a>(
 }
 
 pub fn format_bytes(bytes: u64) -> String {
+    let mut output = String::with_capacity(10);
+    write_bytes(&mut output, bytes);
+    output
+}
+
+fn write_bytes(output: &mut String, bytes: u64) {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut value = bytes as f64;
     let mut unit = UNITS[0];
@@ -104,9 +119,9 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 
     if unit == "B" {
-        format!("{bytes} B")
+        let _ = write!(output, "{bytes} B");
     } else {
-        format!("{value:.1} {unit}")
+        let _ = write!(output, "{value:.1} {unit}");
     }
 }
 
