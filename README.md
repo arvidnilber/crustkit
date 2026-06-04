@@ -1,4 +1,5 @@
 # Crustkit
+<img width="800" height="280" alt="crustkit" src="https://github.com/user-attachments/assets/974c04d5-a766-47a7-a0f8-634e9e72a6f7" />
 
 Build Rust TUIs that feel responsive, mouse-aware, and polished without
 writing the same terminal plumbing in every app.
@@ -27,6 +28,20 @@ TUI needs terminal lifecycle safety, clear status, resize behavior, mouse math,
 dialogs, progress, and consistent key hints. Crustkit packages those pieces so
 you can spend more time on your workflow and less time rebuilding terminal UI
 infrastructure.
+## Demo of a TUI built with Crustkit
+
+
+https://github.com/user-attachments/assets/08d97908-1641-4c55-8df8-1fd9851a64bb
+
+
+```bash
+cargo run -p crustkit-demo -- --help
+cargo run -p crustkit-demo
+cargo run -p crustkit-demo -- --no-effects
+```
+
+See [`docs/demo.md`](docs/demo.md) and
+[`docs/getting-started.md`](docs/getting-started.md) for more examples.
 
 ## We're Hiring
 
@@ -279,17 +294,6 @@ crustkit = { version = "0.2.0", features = ["taffy"] }
 ```
 
 Default features include TachyonFX component effects for alpha builds.
-
-## Demo
-
-```bash
-cargo run -p crustkit-demo -- --help
-cargo run -p crustkit-demo
-cargo run -p crustkit-demo -- --no-effects
-```
-
-See [`docs/demo.md`](docs/demo.md) and
-[`docs/getting-started.md`](docs/getting-started.md) for more examples.
 
 ## Local Development
 
