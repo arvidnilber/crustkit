@@ -14,8 +14,8 @@ The demo is intentionally local-only and synthetic. It shows:
 - mouse tab, row, theme-chip, segmented-control, hover, and wheel handling
 - terminal-safe theme choices: auto, dark, light, high-contrast dark,
   high-contrast light, and monochrome
-- progress gauges, status lines, key hints, text input, dialogs, layout, mouse,
-  and panel shadows
+- progress gauges, status lines, key hints, text input, dialogs, layout, and
+  mouse
 - TachyonFX presets, patterns, filters, repeat modes, and keyed managers plus
   the runtime `--no-effects` switch
 - a credits tab thanking Rust, Ratatui, Crossterm, TachyonFX, color-eyre, and

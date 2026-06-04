@@ -4,12 +4,13 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use crustkit::{
-    AppTheme, DialogTheme, InputDialog, KeyHint, ManagedTerminal, ProgressBarTheme, StatusLine,
-    TextInput, ThemeMode, TransferProgress, body_split, centered_dialog_rect, exit_key_hint,
-    footer, inline_item_index_at, is_exit_key, key_hints_line, left_mouse_click, mouse_position,
-    rect_contains, row_index_at, run_with_terminal, transfer_progress_gauge,
+    AppTheme, DialogTheme, InputDialog, KeyHint, ManagedTerminal, NavigationCommand,
+    NavigationFocus, ProgressBarTheme, ResizableSidebar, StatusLine, TextInput, ThemeMode,
+    TransferProgress, body_split, centered_dialog_rect, drain_events, exit_key_hint, footer,
+    inline_item_index_at, is_exit_key, key_hints_line, left_mouse_click, mouse_position,
+    navigation_command, rect_contains, row_index_at, run_with_terminal, transfer_progress_gauge,
 };
 #[cfg(feature = "tachyonfx")]
 use crustkit::{
@@ -248,6 +249,7 @@ struct App {
     theme: AppTheme,
     actions: Vec<Action>,
     action_state: ListState,
+    focus: NavigationFocus,
     status: StatusLine,
     confirm: Option<Action>,
     segment: Segment,
@@ -256,8 +258,12 @@ struct App {
     input_value: String,
     effects_enabled: bool,
     quit: bool,
+    hover: Option<crustkit::MouseClick>,
+    sidebar: ResizableSidebar,
+    body_area: Rect,
     tab_area: Rect,
     action_area: Rect,
+    effect_area: Rect,
     theme_area: Rect,
     segment_area: Rect,
     #[cfg(feature = "tachyonfx")]
@@ -297,6 +303,7 @@ impl App {
                 },
             ],
             action_state,
+            focus: NavigationFocus::Header,
             status: StatusLine::info("ready"),
             confirm: None,
             segment: Segment::Rows,
@@ -305,8 +312,15 @@ impl App {
             input_value: "crustkit".to_string(),
             effects_enabled,
             quit: false,
+            hover: None,
+            sidebar: ResizableSidebar::new(34, 22, 58)
+                .with_min_content_width(34)
+                .with_compact(96, 10)
+                .with_hit_slop(2),
+            body_area: Rect::default(),
             tab_area: Rect::default(),
             action_area: Rect::default(),
+            effect_area: Rect::default(),
             theme_area: Rect::default(),
             segment_area: Rect::default(),
             #[cfg(feature = "tachyonfx")]
@@ -318,8 +332,8 @@ impl App {
         while !self.quit {
             terminal.draw(|frame| self.render(frame))?;
 
-            if event::poll(Duration::from_millis(80))? {
-                match event::read()? {
+            for input in drain_events(Duration::from_millis(80))? {
+                match input {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
                         self.handle_key(key.code, key.modifiers);
                     }
@@ -350,12 +364,18 @@ impl App {
             return;
         }
 
+        match navigation_command(code, self.focus, self.at_first_item()) {
+            NavigationCommand::NextTab => self.next_tab(),
+            NavigationCommand::PreviousTab => self.previous_tab(),
+            NavigationCommand::EnterBody => self.enter_body(),
+            NavigationCommand::ExitBody => self.exit_body(),
+            NavigationCommand::NextItem => self.next_row(),
+            NavigationCommand::PreviousItem => self.previous_row(),
+            NavigationCommand::Activate => self.activate_selected(),
+            NavigationCommand::None => {}
+        }
+
         match code {
-            KeyCode::Tab | KeyCode::Right => self.next_tab(),
-            KeyCode::BackTab | KeyCode::Left => self.previous_tab(),
-            KeyCode::Char('j') | KeyCode::Down => self.next_row(),
-            KeyCode::Char('k') | KeyCode::Up => self.previous_row(),
-            KeyCode::Enter => self.activate_selected(),
             KeyCode::Char('n') if self.tab == Tab::Effects => self.next_effect(),
             KeyCode::Char('t') => self.next_theme(),
             KeyCode::Char('e') => {
@@ -372,6 +392,20 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
+        self.hover = Some(mouse_position(mouse));
+
+        if matches!(self.tab, Tab::Actions | Tab::MouseLab)
+            && let Some(event) = self.sidebar.handle_mouse(mouse, self.body_area)
+        {
+            let message = format!("sidebar {} {}", event.size(), event.axis().unit());
+            self.status = if event.is_finished() {
+                StatusLine::success(format!("{message} set"))
+            } else {
+                StatusLine::info(message)
+            };
+            return;
+        }
+
         match mouse.kind {
             MouseEventKind::ScrollDown => self.next_row(),
             MouseEventKind::ScrollUp => self.previous_row(),
@@ -379,8 +413,9 @@ impl App {
         }
 
         let Some(click) = left_mouse_click(mouse) else {
-            let position = mouse_position(mouse);
-            if rect_contains(self.action_area, position) {
+            if let Some(position) = self.hover
+                && rect_contains(self.action_area, position)
+            {
                 self.status = StatusLine::info("hovering action list");
             }
             return;
@@ -388,22 +423,34 @@ impl App {
 
         if let Some(index) = inline_item_index_at(self.tab_area, click, tab_widths()) {
             self.set_tab(Tab::ALL[index]);
+            self.focus = NavigationFocus::Header;
             self.status = StatusLine::info("tab selected");
             return;
         }
 
         if let Some(index) = inline_item_index_at(self.theme_area, click, theme_widths()) {
+            self.focus = NavigationFocus::Body;
             self.set_theme(DemoTheme::ALL[index]);
             return;
         }
 
         if let Some(index) = inline_item_index_at(self.segment_area, click, segment_widths()) {
+            self.focus = NavigationFocus::Body;
             self.segment = Segment::ALL[index];
             self.status = StatusLine::info("mouse lab segment selected");
             return;
         }
 
+        if self.tab == Tab::Effects
+            && let Some(index) = row_index_at(self.effect_area, click, 0, EffectChoice::ALL.len())
+        {
+            self.focus = NavigationFocus::Body;
+            self.set_effect(EffectChoice::ALL[index]);
+            return;
+        }
+
         if let Some(index) = row_index_at(self.action_area, click, 1, self.actions.len()) {
+            self.focus = NavigationFocus::Body;
             self.action_state.select(Some(index));
             self.activate_selected();
         }
@@ -428,17 +475,49 @@ impl App {
     fn set_tab(&mut self, tab: Tab) {
         if self.tab != tab {
             self.tab = tab;
+            self.focus = NavigationFocus::Header;
             self.reset_effects();
         }
     }
 
+    fn at_first_item(&self) -> bool {
+        match self.tab {
+            Tab::Actions | Tab::MouseLab => self.action_state.selected().unwrap_or_default() == 0,
+            Tab::Effects => self.effect_choice == EffectChoice::ALL[0],
+            _ => true,
+        }
+    }
+
+    fn enter_body(&mut self) {
+        self.focus = NavigationFocus::Body;
+        match self.tab {
+            Tab::Actions | Tab::MouseLab => self.action_state.select(Some(0)),
+            Tab::Effects => self.set_effect(EffectChoice::ALL[0]),
+            _ => {}
+        }
+    }
+
+    fn exit_body(&mut self) {
+        self.focus = NavigationFocus::Header;
+    }
+
     fn next_row(&mut self) {
+        if self.tab == Tab::Effects {
+            self.next_effect();
+            return;
+        }
+
         let selected = self.action_state.selected().unwrap_or_default();
         self.action_state
             .select(Some((selected + 1) % self.actions.len()));
     }
 
     fn previous_row(&mut self) {
+        if self.tab == Tab::Effects {
+            self.previous_effect();
+            return;
+        }
+
         let selected = self.action_state.selected().unwrap_or_default();
         self.action_state.select(Some(
             (selected + self.actions.len() - 1) % self.actions.len(),
@@ -446,6 +525,12 @@ impl App {
     }
 
     fn activate_selected(&mut self) {
+        if self.tab == Tab::Effects {
+            self.reset_effects();
+            self.status = StatusLine::info(self.effect_choice.label());
+            return;
+        }
+
         let Some(action) = self
             .action_state
             .selected()
@@ -489,7 +574,21 @@ impl App {
             .iter()
             .position(|choice| *choice == self.effect_choice)
             .unwrap_or_default();
-        self.effect_choice = EffectChoice::ALL[(index + 1) % EffectChoice::ALL.len()];
+        self.set_effect(EffectChoice::ALL[(index + 1) % EffectChoice::ALL.len()]);
+    }
+
+    fn previous_effect(&mut self) {
+        let index = EffectChoice::ALL
+            .iter()
+            .position(|choice| *choice == self.effect_choice)
+            .unwrap_or_default();
+        self.set_effect(
+            EffectChoice::ALL[(index + EffectChoice::ALL.len() - 1) % EffectChoice::ALL.len()],
+        );
+    }
+
+    fn set_effect(&mut self, effect: EffectChoice) {
+        self.effect_choice = effect;
         self.reset_effects();
         self.status = StatusLine::info(self.effect_choice.label());
     }
@@ -516,7 +615,13 @@ impl App {
         self.render_demo_header(frame, root[0]);
 
         self.tab_area = root[1];
+        self.body_area = root[2];
         frame.render_widget(self.tabs(), root[1]);
+
+        self.action_area = Rect::default();
+        self.effect_area = Rect::default();
+        self.theme_area = Rect::default();
+        self.segment_area = Rect::default();
 
         match self.tab {
             Tab::Overview => self.render_overview(frame, root[2]),
@@ -550,14 +655,22 @@ impl App {
     }
 
     fn tabs(&self) -> Paragraph<'static> {
+        let hover = self.hovered_tab_index();
         Paragraph::new(Line::from(
             Tab::ALL
                 .into_iter()
-                .map(|tab| {
+                .enumerate()
+                .map(|(index, tab)| {
                     if tab == self.tab {
+                        let mut style = self.selection_style();
+                        if self.focus == NavigationFocus::Header {
+                            style = style.add_modifier(Modifier::UNDERLINED);
+                        }
+                        Span::styled(format!(" {} {} ", tab.glyph(), tab.label()), style)
+                    } else if hover == Some(index) {
                         Span::styled(
                             format!(" {} {} ", tab.glyph(), tab.label()),
-                            self.selection_style(),
+                            self.hover_style(),
                         )
                     } else {
                         Span::styled(
@@ -602,7 +715,7 @@ impl App {
 
     fn render_overview(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let body = body_split(area, 92, 36, 9);
-        self.render_shadowed_block(frame, body[0], "Status");
+        self.render_panel_block(frame, body[0], "Status");
 
         let elapsed = self.progress_started.elapsed().as_secs_f64();
         let downloaded = ((elapsed.sin().abs() * 4_000_000.0) as u64).max(512_000);
@@ -613,7 +726,7 @@ impl App {
             ProgressBarTheme::new(
                 self.surface_style(),
                 self.progress_style(),
-                self.accent_style(),
+                self.progress_label_style(),
             ),
         );
 
@@ -635,7 +748,7 @@ impl App {
         );
         frame.render_widget(gauge, left[1]);
 
-        self.render_shadowed_block(frame, body[1], "Preview");
+        self.render_panel_block(frame, body[1], "Preview");
         let preview = Paragraph::new(vec![
             Line::from("Default effects are enabled by Cargo feature."),
             Line::from("Use --no-effects to disable runtime animation in this demo."),
@@ -653,8 +766,8 @@ impl App {
 
     fn render_components(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let body = body_split(area, 104, 42, 14);
-        self.render_shadowed_block(frame, body[0], "Input");
-        self.render_shadowed_block(frame, body[1], "Dialogs + Chrome");
+        self.render_panel_block(frame, body[0], "Input");
+        self.render_panel_block(frame, body[1], "Dialogs + Chrome");
 
         let left = Layout::vertical([
             Constraint::Length(6),
@@ -668,7 +781,7 @@ impl App {
             .value(self.input_value.clone())
             .placeholder("type a search")
             .help("builder widget, cursor, placeholder, focus style")
-            .focused(true);
+            .focused(self.focus == NavigationFocus::Body);
         #[cfg(feature = "tachyonfx")]
         let text_input =
             text_input.effect(ComponentEffect::fade_from_fg(self.tab_accent_color(), 420));
@@ -738,10 +851,11 @@ impl App {
     }
 
     fn render_actions(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        let body = body_split(area, 96, 34, 10);
-        self.render_action_list(frame, body[0]);
+        let body = self.sidebar.layout(area);
+        self.render_action_list(frame, body.sidebar);
+        self.render_resize_handle(frame, body.handle, body.compact);
 
-        self.render_shadowed_block(frame, body[1], "Detail");
+        self.render_panel_block(frame, body.content, "Detail");
         let selected = self
             .action_state
             .selected()
@@ -760,13 +874,14 @@ impl App {
         ])
         .style(self.surface_style())
         .wrap(Wrap { trim: true });
-        frame.render_widget(detail, body[1].inner(Margin::new(1, 1)));
+        frame.render_widget(detail, body.content.inner(Margin::new(1, 1)));
     }
 
     fn render_mouse_lab(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        let body = body_split(area, 96, 38, 9);
-        self.render_action_list(frame, body[0]);
-        self.render_shadowed_block(frame, body[1], "Mouse Lab");
+        let body = self.sidebar.layout(area);
+        self.render_action_list(frame, body.sidebar);
+        self.render_resize_handle(frame, body.handle, body.compact);
+        self.render_panel_block(frame, body.content, "Mouse Lab");
 
         let inner = Layout::vertical([
             Constraint::Length(2),
@@ -774,14 +889,14 @@ impl App {
             Constraint::Min(2),
         ])
         .margin(1)
-        .split(body[1]);
+        .split(body.content);
 
         self.segment_area = inner[0];
         frame.render_widget(self.segment_line(), inner[0]);
         frame.render_widget(
             Paragraph::new(vec![
                 Line::from(format!("Active hit-test: {}", self.segment.label())),
-                Line::from("Click tabs, rows, theme chips, or this segmented control."),
+                Line::from("Drag the divider, click rows/chips/tabs, or use the wheel."),
                 Line::from("Wheel events move the selected action row."),
             ])
             .style(self.surface_style())
@@ -792,8 +907,9 @@ impl App {
 
     fn render_effects(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let body = body_split(area, 104, 40, 12);
-        self.render_shadowed_block(frame, body[0], "Presets");
-        self.render_shadowed_block(frame, body[1], "Patterns + Filters");
+        self.render_panel_block(frame, body[0], "Presets");
+        self.render_panel_block(frame, body[1], "Patterns + Filters");
+        self.effect_area = body[0].inner(Margin::new(1, 1));
 
         let presets = Paragraph::new(vec![
             self.effect_choice_line(EffectChoice::Fade),
@@ -814,7 +930,7 @@ impl App {
         self.render_widget_with_effect(
             frame,
             "effect-presets",
-            body[0].inner(Margin::new(1, 1)),
+            self.effect_area,
             presets,
             self.showcase_effect(),
         );
@@ -857,7 +973,7 @@ impl App {
     }
 
     fn render_themes(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        self.render_shadowed_block(frame, area, "Themes");
+        self.render_panel_block(frame, area, "Themes");
         let inner = Layout::vertical([
             Constraint::Length(2),
             Constraint::Length(5),
@@ -882,8 +998,8 @@ impl App {
 
     fn render_credits(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let body = body_split(area, 104, 38, 12);
-        self.render_shadowed_block(frame, body[0], "Built On");
-        self.render_shadowed_block(frame, body[1], "Thanks");
+        self.render_panel_block(frame, body[0], "Built On");
+        self.render_panel_block(frame, body[1], "Thanks");
 
         frame.render_widget(
             Paragraph::new(vec![
@@ -920,16 +1036,26 @@ impl App {
 
     fn render_action_list(&mut self, frame: &mut Frame<'_>, area: Rect) {
         self.action_area = area;
-        self.render_shadowed_block(frame, area, "Actions");
+        self.render_panel_block(frame, area, "Actions");
+        let selected = (self.focus == NavigationFocus::Body)
+            .then(|| self.action_state.selected())
+            .flatten();
+        let hover = self.hovered_action_index();
         let items = self
             .actions
             .iter()
-            .map(|action| {
+            .enumerate()
+            .map(|(index, action)| {
                 let marker = if action.destructive { "! " } else { "> " };
-                ListItem::new(Line::from(vec![
+                let item = ListItem::new(Line::from(vec![
                     Span::styled(marker, self.accent_style()),
                     Span::raw(action.label),
-                ]))
+                ]));
+                if hover == Some(index) && selected != Some(index) {
+                    item.style(self.hover_style())
+                } else {
+                    item
+                }
             })
             .collect::<Vec<_>>();
 
@@ -938,7 +1064,16 @@ impl App {
             .highlight_style(self.selection_style())
             .highlight_symbol("");
 
-        frame.render_stateful_widget(list, area.inner(Margin::new(1, 1)), &mut self.action_state);
+        if self.focus == NavigationFocus::Body {
+            frame.render_stateful_widget(
+                list,
+                area.inner(Margin::new(1, 1)),
+                &mut self.action_state,
+            );
+        } else {
+            let mut state = ListState::default();
+            frame.render_stateful_widget(list, area.inner(Margin::new(1, 1)), &mut state);
+        }
     }
 
     fn render_confirm(&self, frame: &mut Frame<'_>, area: Rect, action: Action) {
@@ -968,8 +1103,7 @@ impl App {
         frame.render_widget(text, rect);
     }
 
-    fn render_shadowed_block(&self, frame: &mut Frame<'_>, area: Rect, title: &'static str) {
-        self.draw_shadow(frame, area);
+    fn render_panel_block(&self, frame: &mut Frame<'_>, area: Rect, title: &'static str) {
         frame.render_widget(
             Block::bordered()
                 .title(self.card_title_line(title))
@@ -980,51 +1114,37 @@ impl App {
         );
     }
 
-    fn draw_shadow(&self, frame: &mut Frame<'_>, area: Rect) {
-        if area.width == 0 || area.height == 0 {
+    fn render_resize_handle(&self, frame: &mut Frame<'_>, area: Rect, compact: bool) {
+        if area.is_empty() {
             return;
         }
 
-        let bounds = frame.area();
-        let shadow = Rect {
-            x: area.x.saturating_add(2),
-            y: area.y.saturating_add(1),
-            width: area.width,
-            height: area.height,
+        let hovered = self
+            .hover
+            .is_some_and(|position| rect_contains(area, position));
+        let style = if self.sidebar.is_dragging() {
+            self.accent_style()
+        } else if hovered {
+            self.hover_style()
+        } else {
+            self.dim_style()
         };
-        let color = self.shadow_color();
-        let buf = frame.buffer_mut();
-        for y in shadow.y..shadow.bottom().min(bounds.bottom()) {
-            for x in shadow.x..shadow.right().min(bounds.right()) {
-                if x < area.right() && y < area.bottom() {
-                    continue;
-                }
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    cell.set_char(' ');
-                    cell.set_bg(color);
-                }
-            }
-        }
-    }
 
-    fn shadow_color(&self) -> Color {
-        match self.theme.mode() {
-            ThemeMode::Dark => {
-                let (r, g, b) = rgb_of(self.tab_accent_color());
-                let scale = |channel: u8| (f32::from(channel) * 0.24).round() as u8;
-                Color::Rgb(scale(r), scale(g), scale(b))
-            }
-            ThemeMode::Light => {
-                lerp_color(self.tab_accent_color(), Color::Rgb(205, 199, 191), 0.55)
-            }
-        }
+        let lines = if compact {
+            vec![Line::from("─".repeat(usize::from(area.width)))]
+        } else {
+            vec![Line::from("│"); usize::from(area.height)]
+        };
+        frame.render_widget(Paragraph::new(lines).style(style), area);
     }
 
     fn surface_style(&self) -> Style {
-        match self.theme.mode() {
-            ThemeMode::Dark => Style::new().fg(self.foreground_color()),
-            ThemeMode::Light => Style::new().fg(Color::Black).bg(Color::White),
-        }
+        Style::new().fg(self.foreground_color())
+    }
+
+    #[cfg(feature = "tachyonfx")]
+    fn effect_backdrop_color(&self) -> Color {
+        bar_bg(self.theme.mode())
     }
 
     fn muted_style(&self) -> Style {
@@ -1059,31 +1179,44 @@ impl App {
     }
 
     fn selection_style(&self) -> Style {
-        match self.theme.mode() {
-            ThemeMode::Dark => Style::new()
-                .fg(Color::Rgb(240, 238, 255))
-                .bg(selection_bg(ThemeMode::Dark)),
-            ThemeMode::Light => Style::new().fg(Color::White).bg(Color::Rgb(92, 55, 150)),
-        }
+        Style::new()
+            .fg(self.tab_accent_color())
+            .bg(selection_bg(self.theme.mode()))
+            .add_modifier(Modifier::BOLD)
+    }
+
+    fn hover_style(&self) -> Style {
+        Style::new()
+            .fg(self.tab_accent_color())
+            .bg(bar_bg(self.theme.mode()))
     }
 
     fn progress_style(&self) -> Style {
-        match self.theme.mode() {
-            ThemeMode::Dark => Style::new()
-                .fg(progress_fill(self.tab))
-                .bg(bar_bg(ThemeMode::Dark)),
-            ThemeMode::Light => Style::new().fg(Color::White).bg(self.tab_accent_color()),
-        }
+        Style::new()
+            .fg(progress_fill(self.tab, self.theme.mode()))
+            .bg(bar_bg(self.theme.mode()))
+    }
+
+    fn progress_label_style(&self) -> Style {
+        Style::new()
+            .fg(self.foreground_color())
+            .add_modifier(Modifier::BOLD)
     }
 
     fn effect_choice_line(&self, choice: EffectChoice) -> Line<'static> {
-        let active = choice == self.effect_choice;
+        let active = self.focus == NavigationFocus::Body && choice == self.effect_choice;
+        let hover = self
+            .hovered_effect_index()
+            .and_then(|index| EffectChoice::ALL.get(index));
+        let hovered = hover == Some(&choice);
         Line::from(vec![
             Span::styled(if active { "▌ " } else { "  " }, self.accent_style()),
             Span::styled(
                 format!("{:<9}", choice.label()),
                 if active {
                     self.selection_style()
+                } else if hovered {
+                    self.hover_style()
                 } else {
                     self.accent_style()
                 },
@@ -1180,15 +1313,14 @@ impl App {
                 .pattern(ComponentEffectPattern::Coalesce)
                 .filter(ComponentEffectFilter::Text),
             EffectChoice::Sweep => {
-                ComponentEffect::sweep_in(Motion::LeftToRight, 8, self.shadow_color(), 900).pattern(
-                    ComponentEffectPattern::Sweep {
+                ComponentEffect::sweep_in(Motion::LeftToRight, 8, self.effect_backdrop_color(), 900)
+                    .pattern(ComponentEffectPattern::Sweep {
                         direction: Motion::LeftToRight,
                         gradient_length: 8,
-                    },
-                )
+                    })
             }
             EffectChoice::Slide => {
-                ComponentEffect::slide_in(Motion::LeftToRight, 8, self.shadow_color(), 900)
+                ComponentEffect::slide_in(Motion::LeftToRight, 8, self.effect_backdrop_color(), 900)
             }
             EffectChoice::Pulse => ComponentEffect::pulse_fg(self.tab_accent_color(), 900)
                 .repeat(EffectRepeat::PingPong),
@@ -1263,13 +1395,46 @@ impl App {
         frame.render_widget(widget, area);
     }
 
+    fn hovered_tab_index(&self) -> Option<usize> {
+        self.hover
+            .and_then(|position| inline_item_index_at(self.tab_area, position, tab_widths()))
+    }
+
+    fn hovered_action_index(&self) -> Option<usize> {
+        self.hover
+            .and_then(|position| row_index_at(self.action_area, position, 1, self.actions.len()))
+    }
+
+    fn hovered_effect_index(&self) -> Option<usize> {
+        (self.tab == Tab::Effects).then_some(()).and_then(|()| {
+            self.hover.and_then(|position| {
+                row_index_at(self.effect_area, position, 0, EffectChoice::ALL.len())
+            })
+        })
+    }
+
+    fn hovered_theme_index(&self) -> Option<usize> {
+        self.hover
+            .and_then(|position| inline_item_index_at(self.theme_area, position, theme_widths()))
+    }
+
+    fn hovered_segment_index(&self) -> Option<usize> {
+        self.hover.and_then(|position| {
+            inline_item_index_at(self.segment_area, position, segment_widths())
+        })
+    }
+
     fn theme_line(&self) -> Paragraph<'static> {
+        let hover = self.hovered_theme_index();
         Paragraph::new(Line::from(
             DemoTheme::ALL
                 .into_iter()
-                .map(|theme| {
+                .enumerate()
+                .map(|(index, theme)| {
                     if theme == self.theme_choice {
                         Span::styled(format!(" {} ", theme.label()), self.selection_style())
+                    } else if hover == Some(index) {
+                        Span::styled(format!(" {} ", theme.label()), self.hover_style())
                     } else {
                         Span::styled(format!(" {} ", theme.label()), self.muted_style())
                     }
@@ -1280,12 +1445,16 @@ impl App {
     }
 
     fn segment_line(&self) -> Paragraph<'static> {
+        let hover = self.hovered_segment_index();
         Paragraph::new(Line::from(
             Segment::ALL
                 .into_iter()
-                .map(|segment| {
+                .enumerate()
+                .map(|(index, segment)| {
                     if segment == self.segment {
                         Span::styled(format!(" {} ", segment.label()), self.selection_style())
+                    } else if hover == Some(index) {
+                        Span::styled(format!(" {} ", segment.label()), self.hover_style())
                     } else {
                         Span::styled(format!(" {} ", segment.label()), self.muted_style())
                     }
@@ -1298,34 +1467,23 @@ impl App {
 fn tab_widths() -> impl Iterator<Item = u16> {
     Tab::ALL
         .into_iter()
-        .map(|tab| u16::try_from(tab.label().len() + tab.glyph().len() + 3).unwrap_or(u16::MAX))
+        .map(|tab| cell_width(tab.label()) + cell_width(tab.glyph()) + 3)
 }
 
 fn theme_widths() -> impl Iterator<Item = u16> {
     DemoTheme::ALL
         .into_iter()
-        .map(|theme| u16::try_from(theme.label().len() + 2).unwrap_or(u16::MAX))
+        .map(|theme| cell_width(theme.label()) + 2)
 }
 
 fn segment_widths() -> impl Iterator<Item = u16> {
     Segment::ALL
         .into_iter()
-        .map(|segment| u16::try_from(segment.label().len() + 2).unwrap_or(u16::MAX))
+        .map(|segment| cell_width(segment.label()) + 2)
 }
 
-fn rgb_of(color: Color) -> (u8, u8, u8) {
-    match color {
-        Color::Rgb(r, g, b) => (r, g, b),
-        _ => (200, 200, 200),
-    }
-}
-
-fn lerp_color(from: Color, to: Color, t: f32) -> Color {
-    let (fr, fg, fb) = rgb_of(from);
-    let (tr, tg, tb) = rgb_of(to);
-    let f = t.clamp(0.0, 1.0);
-    let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * f).round() as u8;
-    Color::Rgb(mix(fr, tr), mix(fg, tg), mix(fb, tb))
+fn cell_width(text: &str) -> u16 {
+    u16::try_from(text.chars().count()).unwrap_or(u16::MAX)
 }
 
 fn bar_bg(mode: ThemeMode) -> Color {
@@ -1342,12 +1500,13 @@ fn selection_bg(mode: ThemeMode) -> Color {
     }
 }
 
-fn progress_fill(tab: Tab) -> Color {
-    match tab {
-        Tab::Overview | Tab::Credits => Color::Rgb(82, 88, 150),
-        Tab::Components | Tab::Themes => Color::Rgb(42, 104, 132),
-        Tab::Actions => Color::Rgb(42, 112, 72),
-        Tab::MouseLab => Color::Rgb(92, 58, 132),
-        Tab::Effects => Color::Rgb(122, 78, 28),
+fn progress_fill(tab: Tab, mode: ThemeMode) -> Color {
+    match (tab, mode) {
+        (Tab::Overview | Tab::Credits, ThemeMode::Dark) => Color::Rgb(82, 88, 150),
+        (Tab::Components | Tab::Themes, ThemeMode::Dark) => Color::Rgb(42, 104, 132),
+        (Tab::Actions, ThemeMode::Dark) => Color::Rgb(42, 112, 72),
+        (Tab::MouseLab, ThemeMode::Dark) => Color::Rgb(92, 58, 132),
+        (Tab::Effects, ThemeMode::Dark) => Color::Rgb(122, 78, 28),
+        (_, ThemeMode::Light) => selection_bg(ThemeMode::Light),
     }
 }

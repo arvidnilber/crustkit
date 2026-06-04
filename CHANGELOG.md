@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-06-04
 
 - Enable TachyonFX by default while preserving the slim opt-out path with
   `default-features = false`.

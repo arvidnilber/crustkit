@@ -3,7 +3,7 @@ use std::{
     ffi::OsString,
     io::{self, Stdout},
     path::Path,
-    process::{Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     time::{Duration, Instant},
 };
 
@@ -41,6 +41,8 @@ pub struct CliReload {
     key: char,
     key_label: &'static str,
     dev_cargo_loop: bool,
+    file_watch: bool,
+    watch_debounce_ms: u64,
 }
 
 impl CliReload {
@@ -50,6 +52,8 @@ impl CliReload {
             key: 'r',
             key_label: "ctrl+r",
             dev_cargo_loop: false,
+            file_watch: false,
+            watch_debounce_ms: 400,
         }
     }
 
@@ -59,6 +63,8 @@ impl CliReload {
             key: 'r',
             key_label: "ctrl+r",
             dev_cargo_loop: true,
+            file_watch: false,
+            watch_debounce_ms: 400,
         }
     }
 
@@ -69,6 +75,31 @@ impl CliReload {
     pub const fn without_dev_cargo_loop(mut self) -> Self {
         self.dev_cargo_loop = false;
         self
+    }
+
+    /// Opt into debounced filesystem-watch reload (a prop the app sets): while
+    /// the dev cargo loop runs, saving a watched source file rebuilds and
+    /// relaunches automatically, the same effect as pressing the reload key.
+    /// Requires the `watch` feature; a no-op without it.
+    pub const fn with_file_watch(mut self, on: bool) -> Self {
+        self.file_watch = on;
+        self
+    }
+
+    /// Quiet period the watcher waits for edits to settle before rebuilding, so
+    /// a burst of rapid saves coalesces into one reload instead of spamming
+    /// rebuilds. Defaults to 400ms.
+    pub const fn with_watch_debounce_ms(mut self, ms: u64) -> Self {
+        self.watch_debounce_ms = ms;
+        self
+    }
+
+    pub const fn is_file_watch_enabled(self) -> bool {
+        self.file_watch
+    }
+
+    pub fn watch_debounce(self) -> Duration {
+        Duration::from_millis(self.watch_debounce_ms)
     }
 
     pub fn matches_key(self, code: KeyCode, modifiers: KeyModifiers) -> bool {
@@ -191,7 +222,7 @@ pub fn run_reloadable_cli(
     run: impl FnOnce() -> TerminalResult<CliExit>,
 ) -> TerminalResult<()> {
     if should_start_dev_cargo_loop(reload) {
-        return run_dev_cargo_loop(env::args_os().skip(1).collect());
+        return run_dev_cargo_loop(env::args_os().skip(1).collect(), reload);
     }
 
     finish_cli_exit(run()?)
@@ -212,9 +243,16 @@ fn should_start_dev_cargo_loop(reload: CliReload) -> bool {
         && Path::new("Cargo.toml").is_file()
 }
 
-fn run_dev_cargo_loop(args: Vec<OsString>) -> TerminalResult<()> {
+/// What ended a dev-loop child: a request to rebuild and relaunch, or a real
+/// exit whose code the supervisor should propagate.
+enum ChildOutcome {
+    Rebuild,
+    Exited(i32),
+}
+
+fn run_dev_cargo_loop(args: Vec<OsString>, reload: CliReload) -> TerminalResult<()> {
     loop {
-        let status = Command::new("cargo")
+        let mut child = Command::new("cargo")
             .arg("run")
             .arg("--")
             .args(&args)
@@ -222,13 +260,94 @@ fn run_dev_cargo_loop(args: Vec<OsString>) -> TerminalResult<()> {
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
-            .status()
+            .spawn()
             .context("failed to run cargo reload loop")?;
 
-        if status.code() != Some(CLI_RELOAD_EXIT_CODE) {
-            std::process::exit(status.code().unwrap_or(1));
+        match supervise_dev_child(&mut child, reload)? {
+            ChildOutcome::Rebuild => continue,
+            ChildOutcome::Exited(code) => std::process::exit(code),
         }
     }
+}
+
+/// Reload key (`ctrl+r`) exits the child with [`CLI_RELOAD_EXIT_CODE`]; any
+/// other code is a genuine exit to forward.
+fn classify_dev_exit(status: ExitStatus) -> ChildOutcome {
+    if status.code() == Some(CLI_RELOAD_EXIT_CODE) {
+        ChildOutcome::Rebuild
+    } else {
+        ChildOutcome::Exited(status.code().unwrap_or(1))
+    }
+}
+
+#[cfg(not(feature = "watch"))]
+fn supervise_dev_child(child: &mut Child, _reload: CliReload) -> TerminalResult<ChildOutcome> {
+    let status = child.wait().context("failed to await reload child")?;
+    Ok(classify_dev_exit(status))
+}
+
+/// With the `watch` feature and file-watch opted in, race the child against a
+/// debounced filesystem watcher: a settled batch of source edits terminates the
+/// child so the loop rebuilds. Otherwise just await the child as before.
+#[cfg(feature = "watch")]
+fn supervise_dev_child(child: &mut Child, reload: CliReload) -> TerminalResult<ChildOutcome> {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
+
+    if !reload.is_file_watch_enabled() {
+        let status = child.wait().context("failed to await reload child")?;
+        return Ok(classify_dev_exit(status));
+    }
+
+    let changed = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&changed);
+    let mut debouncer = new_debouncer(
+        reload.watch_debounce(),
+        None,
+        move |result: DebounceEventResult| {
+            if let Ok(events) = result
+                && events
+                    .iter()
+                    .any(|event| event.paths.iter().any(|path| is_watch_relevant(path)))
+            {
+                flag.store(true, Ordering::Release);
+            }
+        },
+    )
+    .context("failed to start file watcher")?;
+
+    // The dev cargo loop runs from the crate directory, so the crate's sources
+    // and manifest are the right things to watch. Watching `src` (not `.`) keeps
+    // `target/` rebuild churn from re-triggering itself.
+    let _ = debouncer.watch(Path::new("src"), RecursiveMode::Recursive);
+    let _ = debouncer.watch(Path::new("Cargo.toml"), RecursiveMode::NonRecursive);
+
+    loop {
+        if changed.load(Ordering::Acquire) {
+            let _ = child.kill();
+            let _ = child.wait();
+            // Parent and child share this TTY; the killed child left it in raw
+            // mode / alt screen, so reset it before cargo prints build output.
+            let _ = restore_terminal_state();
+            return Ok(ChildOutcome::Rebuild);
+        }
+        if let Some(status) = child.try_wait().context("failed to poll reload child")? {
+            return Ok(classify_dev_exit(status));
+        }
+        std::thread::sleep(Duration::from_millis(75));
+    }
+}
+
+/// Only `.rs` files and `Cargo.toml` should trigger a rebuild; editor swap
+/// files and unrelated paths are ignored.
+#[cfg(feature = "watch")]
+fn is_watch_relevant(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "rs")
+        || path.file_name().is_some_and(|name| name == "Cargo.toml")
 }
 
 struct TerminalSession {

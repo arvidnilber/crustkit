@@ -92,6 +92,9 @@ crustkit/
 - terminal background color/theme detection for automatic light/dark palettes
 - opt-in CLI reload helpers for local TUI development
 - shared `ctrl+c` exit-key helpers for raw-mode event loops
+- resizable sidebar split state for mouse-driven terminal panes
+- optional Taffy layout helpers for mapping CSS-style layout trees to Ratatui
+  rectangles
 - TachyonFX presets and component effect props enabled by default through the
   `tachyonfx` feature
 
@@ -134,13 +137,45 @@ In debug builds launched from a Cargo crate directory, Crustkit supervises
 `cargo run` and reloads by rebuilding and restarting. Outside that local
 development shape, reload falls back to replacing the current executable.
 
+## Taffy Layout
+
+Enable the optional `taffy` feature when a terminal screen benefits from
+Flexbox or CSS Grid style layout:
+
+```toml
+[dependencies]
+crustkit = { version = "0.1.0", features = ["taffy"] }
+```
+
+Crustkit re-exports the `taffy` crate and provides helpers to compute a
+`TaffyTree` against a Ratatui `Rect`, then convert computed node layouts back
+into clipped terminal rectangles:
+
+```rust
+use crustkit::{TaffyTreeExt, taffy::prelude::*};
+
+tree.compute_terminal_layout(root, frame.area())?;
+let sidebar = tree.layout_rect(sidebar_node, frame.area())?;
+```
+
+## Resizable Sidebars
+
+Use `ResizableSidebar` when a two-pane TUI should behave like a native
+draggable sidebar: render from the returned `sidebar`, `handle`, and `content`
+rects, then pass mouse events back into the state object.
+
+```rust
+let split = sidebar.layout(area);
+sidebar.handle_mouse(mouse, area);
+```
+
 ## Local Consumption
 
 Apps should depend on the published crate in `Cargo.toml`:
 
 ```toml
 [dependencies]
-crustkit = "0.1.0"
+crustkit = "0.2.0"
 ```
 
 For local development, generate a Cargo patch in the consuming project:

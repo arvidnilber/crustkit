@@ -17,8 +17,7 @@ cargo check -p crustkit-demo --no-default-features
 The demo mirrors production-style interaction patterns without shipping any real
 command surfaces:
 
-- `Overview`: terminal lifecycle, status, progress, shadows, and default
-  effects.
+- `Overview`: terminal lifecycle, status, progress, and default effects.
 - `Components`: `TextInput`, `InputDialog`, `KeyHint`, `StatusLine`, and
   themed dialog composition.
 - `Actions`: keyboard-first list navigation plus confirm-before-reset flow.

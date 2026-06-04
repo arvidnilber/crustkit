@@ -5,8 +5,10 @@ Ratatui and Crossterm.
 
 Crustkit is intentionally not a full application framework. It provides terminal
 lifecycle helpers, status lines, key hints, shell header/footer helpers, transfer
-progress widgets, theme primitives, terminal background detection, and small
-adaptive layout helpers. App domain logic belongs in the consuming crate.
+progress widgets, theme primitives, terminal background detection, small
+adaptive layout helpers, and mouse-driven resizable sidebar state. With the
+optional `taffy` feature, it also provides a thin bridge from Taffy layout trees
+to Ratatui rectangles. App domain logic belongs in the consuming crate.
 
 The crate is meant to stay composable and non-invasive: use the primitives you
 need, keep your app state and domain workflow in your own crate, and rely on
@@ -73,6 +75,27 @@ terminal.draw(|frame| {
 
 The `effects` module also re-exports `tachyonfx`, so consumers can drop down to
 raw `tachyonfx::fx::*` composition whenever the preset helpers are not enough.
+
+Taffy support is opt-in:
+
+```toml
+[dependencies]
+crustkit = { version = "0.1.0", features = ["taffy"] }
+```
+
+```rust
+use crustkit::{TaffyTreeExt, taffy::prelude::*};
+
+tree.compute_terminal_layout(root, frame.area())?;
+let content = tree.layout_rect(content_node, frame.area())?;
+```
+
+Resizable sidebars are part of the base crate:
+
+```rust
+let split = sidebar.layout(area);
+sidebar.handle_mouse(mouse, area);
+```
 
 The repository also includes a publish-disabled demo app:
 

@@ -16,9 +16,15 @@ include = ["src/**/*.rs", "Cargo.toml", "README.md", "LICENSE-*"]
 [dependencies]
 color-eyre.workspace = true
 crossterm.workspace = true
+notify = { version = "8.2.0", optional = true }
+notify-debouncer-full = { version = "0.7.0", optional = true }
 ratatui.workspace = true
 tachyonfx = { workspace = true, optional = true }
+taffy = { version = "0.10.1", optional = true }
 
 [features]
 default = ["tachyonfx"]
 tachyonfx = ["dep:tachyonfx"]
+# Debounced filesystem-watch reload for the dev cargo loop (opt-in).
+watch = ["dep:notify", "dep:notify-debouncer-full"]
+taffy = ["dep:taffy"]
