@@ -129,11 +129,7 @@ Crustkit keeps the loop simple:
    state.
 4. Crustkit gives you reusable UI building blocks so every app does not need to
    reinvent status bars, dialogs, progress, layout, and mouse math.
-
-> Demo video placeholder: add a 30-60 second GIF or MP4 here showing a Crustkit
-> app resizing from wide to narrow, dragging a sidebar with the mouse, clicking
-> rows, and updating status/progress while a task runs.
-
+   
 ## Web-Inspired TUI Primitives
 
 Crustkit brings a few web-app expectations into terminal UI: responsive panes,
