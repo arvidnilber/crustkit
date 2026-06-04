@@ -347,7 +347,7 @@ impl App {
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
-        if is_exit_key(code, modifiers) || matches!(code, KeyCode::Char('q')) {
+        if is_exit_key(code, modifiers) {
             self.quit = true;
             return;
         }
@@ -361,6 +361,15 @@ impl App {
                 }
                 _ => {}
             }
+            return;
+        }
+
+        if self.handle_components_input_key(code, modifiers) {
+            return;
+        }
+
+        if matches!(code, KeyCode::Char('q')) {
+            self.quit = true;
             return;
         }
 
@@ -388,6 +397,43 @@ impl App {
                 });
             }
             _ => {}
+        }
+    }
+
+    fn handle_components_input_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        if self.tab != Tab::Components || self.focus != NavigationFocus::Body {
+            return false;
+        }
+
+        match code {
+            KeyCode::Char(ch)
+                if !modifiers.contains(KeyModifiers::CONTROL)
+                    && !modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.input_value.push(ch);
+                self.status = StatusLine::info("input updated");
+                true
+            }
+            KeyCode::Backspace => {
+                self.input_value.pop();
+                self.status = StatusLine::info("input updated");
+                true
+            }
+            KeyCode::Delete => {
+                self.input_value.clear();
+                self.status = StatusLine::info("input cleared");
+                true
+            }
+            KeyCode::Enter => {
+                self.status = StatusLine::success(format!("query: {}", self.input_value));
+                true
+            }
+            KeyCode::Esc => {
+                self.exit_body();
+                self.status = StatusLine::info("input blurred");
+                true
+            }
+            _ => false,
         }
     }
 
@@ -1508,5 +1554,51 @@ fn progress_fill(tab: Tab, mode: ThemeMode) -> Color {
         (Tab::MouseLab, ThemeMode::Dark) => Color::Rgb(92, 58, 132),
         (Tab::Effects, ThemeMode::Dark) => Color::Rgb(122, 78, 28),
         (_, ThemeMode::Light) => selection_bg(ThemeMode::Light),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn focused_components_app() -> App {
+        let mut app = App::new(false);
+        app.tab = Tab::Components;
+        app.focus = NavigationFocus::Body;
+        app.input_value.clear();
+        app
+    }
+
+    #[test]
+    fn focused_components_input_accepts_text_and_backspace() {
+        let mut app = focused_components_app();
+
+        app.handle_key(KeyCode::Char('q'), KeyModifiers::NONE);
+        app.handle_key(KeyCode::Char('x'), KeyModifiers::NONE);
+        app.handle_key(KeyCode::Backspace, KeyModifiers::NONE);
+
+        assert_eq!(app.input_value, "q");
+        assert!(!app.quit);
+    }
+
+    #[test]
+    fn focused_components_input_escape_blurs() {
+        let mut app = focused_components_app();
+
+        app.handle_key(KeyCode::Esc, KeyModifiers::NONE);
+
+        assert_eq!(app.focus, NavigationFocus::Header);
+        assert_eq!(app.status.message(), "input blurred");
+        assert!(!app.quit);
+    }
+
+    #[test]
+    fn focused_components_input_keeps_ctrl_c_as_global_quit() {
+        let mut app = focused_components_app();
+
+        app.handle_key(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+        assert!(app.quit);
+        assert!(app.input_value.is_empty());
     }
 }
