@@ -1,5 +1,5 @@
 # CrustKit
-<img width="1278" height="410" alt="crustkit-primary-transparent" src="https://github.com/user-attachments/assets/5d46af86-24a5-4b4d-9d12-81cd21575d45" />
+<img width="537" height="152" alt="crustkit-banner-transparent" src="https://github.com/user-attachments/assets/28b51536-a056-45b7-9a1e-1cecbddccfd9" />
 
 Build Rust TUIs that feel responsive, mouse-aware, and polished without
 writing the same terminal plumbing in every app.
